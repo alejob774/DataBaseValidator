@@ -90,7 +90,7 @@ The `DataBaseValidator` is a powerful Python application designed to streamline 
 
 ## 🖥️ Screenshots
 
-<!-- TODO: Add actual screenshots of the web UI and generated reports -->
+![UI](images/Screenshot_Validator.png)<!-- TODO: Add actual screenshots of the web UI and generated reports -->
 <!-- ![Screenshot 1](path-to-screenshot-ui.png) -->
 <!-- ![Screenshot 2](path-to-screenshot-report.png) -->
 
