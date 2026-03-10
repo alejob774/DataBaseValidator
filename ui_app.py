@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import Optional
 
 import pandas as pd
@@ -7,15 +6,34 @@ import pandas as pd
 # Intentar usar TkinterDnD para drag&drop; si no está, usar Tk normal
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore
-    from tkinter import filedialog, messagebox, StringVar, ttk, Frame, Entry, Button, Label, Tk  # type: ignore
+    from tkinter import (
+        Tk,
+        filedialog,
+        messagebox,
+        StringVar,
+        ttk,
+        Frame,
+        Entry,
+        Button,
+        Label,
+    )  # type: ignore
     USE_DND = True
 except ImportError:
-    from tkinter import Tk, filedialog, messagebox, StringVar, ttk, Frame, Entry, Button, Label  # type: ignore
+    from tkinter import (
+        Tk,
+        filedialog,
+        messagebox,
+        StringVar,
+        ttk,
+        Frame,
+        Entry,
+        Button,
+        Label,
+    )  # type: ignore
     DND_FILES = None
     TkinterDnD = None
     USE_DND = False
 
-# Importa tu lógica existente del validador
 from transform_validator.config import MappingConfig
 from transform_validator.dictionary_loader import load_dictionary
 from transform_validator.mapping import map_source_to_normalized
@@ -23,7 +41,7 @@ from transform_validator.validation import aggregate_normalized, compare_with_ou
 from transform_validator.report import write_report_excel
 from transform_validator.normalizer import Normalizer
 
-# Mismas listas de candidatos que en app.py
+# Candidatos de columnas
 CANDIDATE_NAMEPLATE = ["familia", "modelo"]
 CANDIDATE_TRIM = [
     "version simple",
@@ -117,6 +135,7 @@ def run_validation_pipeline(
 ) -> str:
     """
     Ejecuta el pipeline de validación y devuelve la ruta al archivo *_VALIDATION.xlsx.
+    Usa la misma lógica que app.py y genera el heatmap en la hoja Differences.
     """
     # 1) Leer archivo de salida
     output_df = pd.read_excel(output_path, engine="openpyxl")
@@ -190,20 +209,21 @@ def run_validation_pipeline(
     # 7) Agregación
     expected_df = aggregate_normalized(mapped_df)
 
-    # 8) Comparación con OUTPUT
+    # 8) Comparación con OUTPUT (incluye diff_matrix_df para el heatmap)
     comparison = compare_with_output(
         expected_df=expected_df,
         output_df=output_df,
     )
     comparison["unmapped_df"] = unmapped_rows
 
-    # 9) Reporte
+    # 9) Reporte (pasando también diff_matrix_df)
     report_path = os.path.splitext(output_path)[0] + "_VALIDATION.xlsx"
     write_report_excel(
         report_path=report_path,
         summary=comparison["summary"],
         unmapped_rows_df=comparison["unmapped_df"],
         differences_df=comparison["differences_df"],
+        diff_matrix_df=comparison["diff_matrix_df"],
     )
 
     return report_path
@@ -256,37 +276,79 @@ def main():
     else:
         root = Tk()
 
-    root.title("Validador de Normalización")
-    root.geometry("900x320")
+    root.title("Inventory Normalization Validator")
+    root.geometry("800x450")
 
-    # Marco principal
+    # Título
+    title = Label(root, text="Inventory Normalization Validator", font=("Segoe UI", 16, "bold"))
+    title.pack(pady=(10, 0))
+
+    subtitle = Label(
+        root,
+        text="Carga el diccionario, la base original, selecciona la hoja y el output para validar.",
+        font=("Segoe UI", 9),
+        fg="gray",
+    )
+    subtitle.pack(pady=(0, 10))
+
     main_frame = Frame(root)
     main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-    # Entradas de archivos
-    dict_input = FileInput(main_frame, "Diccionario (Base.xlsx):")
-    dict_input.grid(row=0, column=0, sticky="we", pady=5)
+    # 1) Diccionario
+    dict_label = Label(main_frame, text="1) Diccionario (Base.xlsx)", font=("Segoe UI", 10, "bold"))
+    dict_label.grid(row=0, column=0, sticky="w")
+    dict_input = FileInput(main_frame, "Archivo:")
+    dict_input.grid(row=1, column=0, sticky="we", pady=(2, 10))
 
-    orig_input = FileInput(main_frame, "Base original:")
-    orig_input.grid(row=1, column=0, sticky="we", pady=5)
+    # 2) Base original
+    orig_label = Label(main_frame, text="2) Base original", font=("Segoe UI", 10, "bold"))
+    orig_label.grid(row=2, column=0, sticky="w")
+    orig_input = FileInput(main_frame, "Archivo:")
+    orig_input.grid(row=3, column=0, sticky="we", pady=(2, 10))
 
-    out_input = FileInput(main_frame, "Output (OUTPUT_<PAIS>.xlsx):")
-    out_input.grid(row=2, column=0, sticky="we", pady=5)
-
-    # Dropdown de hojas
-    sheet_label = Label(main_frame, text="Hoja de la base original:")
-    sheet_label.grid(row=3, column=0, sticky="w", pady=(15, 2))
+    # 3) Hoja de la base original
+    sheet_label = Label(main_frame, text="3) Hoja de la base original", font=("Segoe UI", 10, "bold"))
+    sheet_label.grid(row=4, column=0, sticky="w")
 
     sheet_var = StringVar()
-    sheet_combo = ttk.Combobox(main_frame, textvariable=sheet_var, state="readonly", width=50)
-    sheet_combo.grid(row=4, column=0, sticky="w", pady=2)
 
-    # Fila de cabecera
-    header_label = Label(main_frame, text="Fila de cabecera (opcional, 0-based, vacío = auto):")
-    header_label.grid(row=5, column=0, sticky="w", pady=(15, 2))
+    # Frame interno para alinear "Hoja: <combo>" igual que "Archivo: <entry>"
+    sheet_frame = Frame(main_frame)
+    sheet_frame.grid(row=5, column=0, sticky="we", pady=(2, 10))
+    sheet_frame.columnconfigure(1, weight=1)
 
-    header_entry = Entry(main_frame, width=10)
-    header_entry.grid(row=6, column=0, sticky="w")
+    sheet_text_label = Label(sheet_frame, text="Hoja:     ")
+    sheet_text_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
+
+    sheet_combo = ttk.Combobox(sheet_frame, textvariable=sheet_var, state="readonly", width=60)
+    sheet_combo.grid(row=0, column=1, sticky="we")
+
+    # 4) Output
+    out_label = Label(main_frame, text="4) Output (OUTPUT_<PAIS>.xlsx)", font=("Segoe UI", 10, "bold"))
+    out_label.grid(row=6, column=0, sticky="w")
+    out_input = FileInput(main_frame, "Archivo:")
+    out_input.grid(row=7, column=0, sticky="we", pady=(2, 10))
+
+    # 5) Fila de cabecera
+    header_label = Label(
+        main_frame,
+        text="5) Fila de cabecera (opcional, 0-based, vacío = auto-detección)",
+        font=("Segoe UI", 10, "bold"),
+    )
+    header_label.grid(row=8, column=0, sticky="w", pady=(5, 2))
+
+    # Frame interno para "Fila: <entry>" alineado con los recuadros superiores
+    header_frame = Frame(main_frame)
+    header_frame.grid(row=9, column=0, sticky="we")
+    header_frame.columnconfigure(1, weight=0)
+
+    header_text_label = Label(header_frame, text="Fila:       ")
+    header_text_label.grid(row=0, column=0, sticky="w", padx=(0, 5))
+
+    header_entry = Entry(header_frame, width=10)
+    header_entry.grid(row=0, column=1, sticky="w")
+
+    main_frame.columnconfigure(0, weight=1)
 
     # Actualizar lista de hojas cuando cambia la base original
     def update_sheets_from_original(*_args):
@@ -307,6 +369,7 @@ def main():
         command=lambda: (orig_input.browse_file(), update_sheets_from_original())
     )
 
+    # Botón Procesar
     def on_process():
         dict_path = dict_input.get()
         orig_path = orig_input.get()
@@ -358,8 +421,17 @@ def main():
                 f"Ocurrió un error:\n{e}",
             )
 
-    process_button = Button(main_frame, text="Procesar", command=on_process, width=15)
-    process_button.grid(row=7, column=0, sticky="w", pady=(20, 0))
+    process_button = Button(
+        main_frame,
+        text="Procesar",
+        command=on_process,
+        width=15,
+        bg="#0078D4",
+        fg="white",
+        activebackground="#005A9E",
+        relief="raised",
+    )
+    process_button.grid(row=10, column=0, sticky="w", pady=(20, 0))
 
     root.mainloop()
 
